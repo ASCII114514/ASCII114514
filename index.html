@@ -5,9 +5,198 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My PWA</title>
     <link rel="manifest" href="./manifest.json">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            margin: 10px 0;
+            font-size: 1.5em;
+        }
+        #info {
+            margin: 5px 0;
+            font-size: 1em;
+        }
+        #gameBoard {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 4px;
+            width: 90vw;
+            margin: 0 auto;
+        }
+        .cell {
+            width: 100%;
+            padding-top: 100%;
+            position: relative;
+            background-color: #ccc;
+            border: 1px solid #999;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+        }
+        .cell::after {
+            content: attr(data-content);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.2em;
+        }
+        .cell.revealed {
+            background-color: #ddd;
+        }
+        .cell.bomb {
+            background-color: red;
+            color: white;
+        }
+        .cell.flag {
+            background-color: yellow;
+        }
+    </style>
 </head>
 <body>
-    <h1>Welcome to My PWA</h1>
-    <p>This is a Progressive Web App example.</p>
+    <script>
+        const boardSize = 10;  // 游戏板大小 10x10
+        const bombCount = 20;  // 炸弹数量
+        let board = [];
+        const gameBoard = document.getElementById("gameBoard");
+
+        function initBoard() {
+            board = Array.from({ length: boardSize }, () =>
+                Array.from({ length: boardSize }, () => ({ isBomb: false, revealed: false, flagged: false, count: 0 }))
+            );
+            plantBombs();
+            calculateCounts();
+            renderBoard();
+        }
+
+        function plantBombs() {
+            let bombsPlanted = 0;
+            while (bombsPlanted < bombCount) {
+                let x = Math.floor(Math.random() * boardSize);
+                let y = Math.floor(Math.random() * boardSize);
+                if (!board[x][y].isBomb) {
+                    board[x][y].isBomb = true;
+                    bombsPlanted++;
+                }
+            }
+        }
+
+        function calculateCounts() {
+            for (let x = 0; x < boardSize; x++) {
+                for (let y = 0; y < boardSize; y++) {
+                    if (board[x][y].isBomb) continue;
+                    board[x][y].count = getNeighbors(x, y).filter(cell => cell.isBomb).length;
+                }
+            }
+        }
+
+        function getNeighbors(x, y) {
+            const neighbors = [];
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx >= 0 && nx < boardSize && ny >= 0 && ny < boardSize) {
+                        neighbors.push(board[nx][ny]);
+                    }
+                }
+            }
+            return neighbors;
+        }
+
+        function renderBoard() {
+            gameBoard.innerHTML = "";
+            board.forEach((row, x) => {
+                row.forEach((cell, y) => {
+                    const cellDiv = document.createElement("div");
+                    cellDiv.classList.add("cell");
+                    cellDiv.dataset.content = "";
+                    if (cell.revealed) {
+                        cellDiv.classList.add("revealed");
+                        cellDiv.dataset.content = cell.isBomb ? "💣" : cell.count || "";
+                        if (cell.isBomb) cellDiv.classList.add("bomb");
+                    } else if (cell.flagged) {
+                        cellDiv.classList.add("flag");
+                        cellDiv.dataset.content = "🚩";
+                    }
+
+                    let timer;
+                    cellDiv.addEventListener("touchstart", () => {
+                        timer = setTimeout(() => handleFlag(x, y), 500); // 长按标记
+                    });
+                    cellDiv.addEventListener("touchend", () => {
+                        clearTimeout(timer);
+                    });
+                    cellDiv.addEventListener("click", () => handleReveal(x, y));
+
+                    gameBoard.appendChild(cellDiv);
+                });
+            });
+        }
+
+        function handleReveal(x, y) {
+            const cell = board[x][y];
+            if (cell.revealed || cell.flagged) return;
+
+            cell.revealed = true;
+
+            if (cell.isBomb) {
+                alert("游戏结束！你踩到了炸弹！💣");
+                revealAll();
+            } else if (cell.count === 0) {
+                revealEmptyCells(x, y);
+            }
+            renderBoard();
+            checkWin();
+        }
+
+        function handleFlag(x, y) {
+            const cell = board[x][y];
+            if (cell.revealed) return;
+            cell.flagged = !cell.flagged;
+            renderBoard();
+        }
+
+        function revealEmptyCells(x, y) {
+            const stack = [[x, y]];
+            while (stack.length > 0) {
+                const [cx, cy] = stack.pop();
+                getNeighbors(cx, cy).forEach((neighbor, i) => {
+                    const nx = cx + (i % 3) - 1;
+                    const ny = cy + Math.floor(i / 3) - 1;
+                    if (nx >= 0 && nx < boardSize && ny >= 0 && ny < boardSize) {
+                        const nextCell = board[nx][ny];
+                        if (!nextCell.revealed && !nextCell.isBomb) {
+                            nextCell.revealed = true;
+                            if (nextCell.count === 0) stack.push([nx, ny]);
+                        }
+                    }
+                });
+            }
+        }
+
+        function revealAll() {
+            board.forEach(row => row.forEach(cell => (cell.revealed = true)));
+            renderBoard();
+        }
+
+        function checkWin() {
+            const allSafeCellsRevealed = board.every(row =>
+                row.every(cell => (cell.isBomb || cell.revealed))
+            );
+            if (allSafeCellsRevealed) {
+                alert("恭喜你赢了！🎉");
+                revealAll();
+            }
+        }
+
+        initBoard();
+    </script>
 </body>
 </html>
